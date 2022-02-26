@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <limits>
 #include "threadpool.h"
+#include <assert.h>
 
 // The pyedt namespace contains the primary implementation,
 // but users will probably want to use the edt namespace (bottom)
@@ -488,6 +489,96 @@ float* _edt3dsq(
   return workspace; 
 }
 
+template <typename T>
+void _special_edt3dsq(
+    T* labels, 
+    const size_t sx, const size_t sy, const size_t sz, 
+    const float wx, const float wy, const float wz,
+    const bool black_border=false, const int parallel=1,
+    float* workspace=NULL,
+    int* dx=NULL,
+    int* dy=NULL,
+    int* dz=NULL
+  ) {
+
+  const size_t sxy = sx * sy;
+  const size_t voxels = sz * sxy;
+
+  assert (workspace != NULL && dx != NULL && dy != NULL && dz != NULL);
+
+  ThreadPool pool(parallel);
+
+  for (size_t z = 0; z < sz; z++) {
+    for (size_t y = 0; y < sy; y++) {
+      pool.enqueue([labels, y, z, sx, sxy, wx, workspace, black_border](){
+        squared_edt_1d_multi_seg<T>(
+          (labels + sx * y + sxy * z), 
+          (workspace + sx * y + sxy * z), 
+          sx, 1, wx, black_border
+        ); 
+      });
+    }
+  }
+
+  pool.join();
+
+  if (!black_border) {
+    tofinite(workspace, voxels);
+  }
+  
+  // NOTE: can pool this
+  for (size_t i = 0; i < voxels; i++) {
+      dx[i] = static_cast<int>(std::round(std::sqrt(std::max<float>(0.0, workspace[i])) / wx));
+  }
+
+  pool.start(parallel);
+
+  for (size_t z = 0; z < sz; z++) {
+    for (size_t x = 0; x < sx; x++) {
+      pool.enqueue([labels, x, sxy, z, workspace, sx, sy, wy, black_border](){
+        squared_edt_1d_parabolic_multi_seg<T>(
+          (labels + x + sxy * z),
+          (workspace + x + sxy * z), 
+          (workspace + x + sxy * z), 
+          sy, sx, wy, black_border
+        );
+      });
+    }
+  }
+
+  pool.join();
+
+  // NOTE: can pool this
+  for (size_t i = 0; i < voxels; i++) {
+      dy[i] = static_cast<int>(std::round(std::sqrt(std::max<float>(0.0, workspace[i] - std::pow(dx[i] * wx, 2))) / wy));
+  }
+
+  pool.start(parallel);
+
+  for (size_t y = 0; y < sy; y++) {
+    for (size_t x = 0; x < sx; x++) {
+      pool.enqueue([labels, x, sx, y, workspace, sz, sxy, wz, black_border](){
+        squared_edt_1d_parabolic_multi_seg<T>(
+          (labels + x + sx * y),
+          (workspace + x + sx * y), 
+          (workspace + x + sx * y), 
+          sz, sxy, wz, black_border
+        );
+      });
+    }
+  }
+
+  pool.join();
+  
+  if (!black_border) {
+    toinfinite(workspace, voxels);
+  }
+  
+  // NOTE: can pool this
+  for (size_t i = 0; i < voxels; i++) {
+      dz[i] = static_cast<int>(std::round(std::sqrt(std::max<float>(0.0, workspace[i] - std::pow(dx[i] * wx, 2) - std::pow(dy[i] * wy, 2))) / wz));
+  }
+}
 // skipping multi-seg logic results in a large speedup
 template <typename T>
 float* _binary_edt3dsq(
@@ -956,6 +1047,7 @@ float* binary_edtsq(
   const float wx, const float wy, const float wz,
   const bool black_border=false, const int parallel=1, float* output=NULL) {
 
+  // NOTE: here
   return pyedt::_binary_edt3dsq(labels, sx, sy, sz, wx, wy, wz, parallel, output);
 }
 

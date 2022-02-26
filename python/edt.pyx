@@ -31,7 +31,7 @@ from cpython cimport array
 cimport numpy as np
 import numpy as np
 
-__VERSION__ = '2.1.2'
+__VERSION__ = '2.1.3'
 
 cdef extern from "edt.hpp" namespace "pyedt":
   cdef void squared_edt_1d_multi_seg[T](
@@ -52,6 +52,14 @@ cdef extern from "edt.hpp" namespace "pyedt":
   ) nogil
 
   cdef float* _edt3dsq[T](
+    T* labels, 
+    size_t sx, size_t sy, size_t sz,
+    float wx, float wy, float wz,
+    native_bool black_border, int parallel,
+    float* output
+  ) nogil
+
+  cdef void _special_edt3dsq[T](
     T* labels, 
     size_t sx, size_t sy, size_t sz,
     float wx, float wy, float wz,
@@ -720,3 +728,50 @@ def __edt3dsq_voxel_graph(
     )
 
   return output.reshape(data.shape, order=order)
+
+def __special_edt3d(
+    data, anisotropy=(1.0, 1.0, 1.0), 
+    native_bool black_border=False, order='C',
+    int parallel=1
+  ):
+  cdef uint8_t[:,:,:] arr_memview8
+
+  cdef size_t sx = data.shape[2]
+  cdef size_t sy = data.shape[1]
+  cdef size_t sz = data.shape[0]
+  cdef float ax = anisotropy[2]
+  cdef float ay = anisotropy[1]
+  cdef float az = anisotropy[0]
+
+  if order == 'F':
+    sx, sy, sz = sz, sy, sx
+    ax = anisotropy[0]
+    ay = anisotropy[1]
+    az = anisotropy[2]
+
+  cdef size_t voxels = sx * sy * sz
+  cdef np.ndarray[float, ndim=1] output = np.zeros( (voxels,), dtype=np.float32 )
+  cdef np.ndarray[int, ndim=1] dx = np.zeros( (voxels,), dtype=np.intc )
+  cdef np.ndarray[int, ndim=1] dy = np.zeros( (voxels,), dtype=np.intc )
+  cdef np.ndarray[int, ndim=1] dz = np.zeros( (voxels,), dtype=np.intc )
+  cdef float[:] outputview = output
+  cdef int[:] dxview = dx
+  cdef int[:] dyview = dy
+  cdef int[:] dzview = dz
+
+  arr_memview8 = data.view(np.uint8)
+  _special_edt3dsq[native_bool](
+    <native_bool*>&arr_memview8[0,0,0],
+    sx, sy, sz,
+    ax, ay, az,
+    black_border, parallel,
+    <float*>&outputview[0],
+    <int*>&dxview[0],
+    <int*>&dyview[0],
+    <int*>&dzview[0]
+  )
+
+  return [np.sqrt(output.reshape(data.shape, order=order)),
+      dx.reshape(data.shape, order=order),
+      dy.reshape(data.shape, order=order),
+      dz.reshape(data.shape, order=order)]
