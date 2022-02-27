@@ -25,8 +25,8 @@ setuptools.setup(
   python_requires="~=3.6", # >= 3.6 < 4.0
   ext_modules=[
     setuptools.Extension(
-      'edt',
-      sources=[ 'edt.cpp' ],
+      'expand_parabola',
+      sources=[ 'expand_parabola.cpp' ],
       language='c++',
       include_dirs=[ np.get_include() ],
       extra_compile_args=extra_compile_args,
