@@ -20,14 +20,21 @@ import numpy as np
 __VERSION__ = '0.1'
 
 cdef extern from "expand_parabola.hpp" namespace "py_expand_parabola":
-  cdef void _expand_3d[T](
+  cdef void _expand_3d_edt[T](
     T* core_squared, 
     size_t sx, size_t sy, size_t sz,
     float wx, float wy, float wz,
     int parallel,
   ) nogil
+  cdef void _nearest_3d[T,T2](
+    T* centers,
+    T2* vals,
+    size_t sx, size_t sy, size_t sz,
+    float wx, float wy, float wz,
+    int parallel,
+  ) nogil
 
-def expand_parabola(
+def expand_edt(
     data, anisotropy=(1.0, 1.0, 1.0), 
     order='C',
     int parallel=1
@@ -48,9 +55,8 @@ def expand_parabola(
 
   data = (data**2).astype(np.single).copy()
   cdef float[:, :, :] arr_memview = data
-  #cdef float[:] outputview = arr_memview
 
-  _expand_3d(
+  _expand_3d_edt(
     <float*>&arr_memview[0,0,0],
     sx, sy, sz,
     ax, ay, az,
@@ -58,3 +64,38 @@ def expand_parabola(
   )
 
   return data
+
+def nearest_3d(
+    data, vals, anisotropy=(1.0, 1.0, 1.0), 
+    order='C',
+    int parallel=1
+  ):
+
+  cdef size_t sx = data.shape[2]
+  cdef size_t sy = data.shape[1]
+  cdef size_t sz = data.shape[0]
+  cdef float ax = anisotropy[2]
+  cdef float ay = anisotropy[1]
+  cdef float az = anisotropy[0]
+
+  if order == 'F':
+    sx, sy, sz = sz, sy, sx
+    ax = anisotropy[0]
+    ay = anisotropy[1]
+    az = anisotropy[2]
+
+  data = data.astype(np.single).copy()
+  vals = vals.astype(np.intc).copy()
+  cdef float[:, :, :] arr_memview = data
+  cdef int[:, :, :] val_memview = vals
+  #cdef float[:] outputview = arr_memview
+
+  _nearest_3d(
+    <float*>&arr_memview[0,0,0],
+    <int*>&val_memview[0,0,0],
+    sx, sy, sz,
+    ax, ay, az,
+    parallel
+  )
+
+  return data, vals
