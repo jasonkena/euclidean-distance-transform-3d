@@ -53,7 +53,7 @@ def expand_edt(
     ay = anisotropy[1]
     az = anisotropy[2]
 
-  data = (data**2).astype(np.single).copy()
+  data = data.astype(np.single).copy()
   cdef float[:, :, :] arr_memview = data
 
   _expand_3d_edt(

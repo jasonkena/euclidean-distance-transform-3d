@@ -1,6 +1,7 @@
 CHANGES
 =======
 
+* Working nearest neighbors and edt expansion
 * Working expand\_sphere
 * First attempt
 
