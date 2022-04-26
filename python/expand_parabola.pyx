@@ -49,6 +49,9 @@ def expand_edt(
   data = data.astype(np.single).copy()
   cdef float[:, :, :] arr_memview = data
 
+  if parallel <= 0:
+    parallel = multiprocessing.cpu_count()
+
   _expand_3d_edt(
     <float*>&arr_memview[0,0,0],
     sx, sy, sz,
